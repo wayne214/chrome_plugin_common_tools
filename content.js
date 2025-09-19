@@ -111,6 +111,80 @@ function addPluginStyles() {
             opacity: 0 !important;
             pointer-events: none !important;
         }
+        
+        /* 区域选择样式 */
+        .${PLUGIN_PREFIX}-selection-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 999999;
+            cursor: crosshair;
+            user-select: none;
+        }
+        
+        .${PLUGIN_PREFIX}-selection-box {
+            position: absolute;
+            border: 2px dashed #007cff;
+            background: rgba(0, 124, 255, 0.1);
+            pointer-events: none;
+        }
+        
+        .${PLUGIN_PREFIX}-selection-info {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            text-align: center;
+            z-index: 1000000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .${PLUGIN_PREFIX}-selection-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            z-index: 1000000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .${PLUGIN_PREFIX}-selection-btn {
+            margin: 0 10px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #007cff;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s ease;
+        }
+        
+        .${PLUGIN_PREFIX}-selection-btn:hover {
+            background: #0056b3;
+        }
+        
+        .${PLUGIN_PREFIX}-selection-btn.cancel {
+            background: #dc3545;
+        }
+        
+        .${PLUGIN_PREFIX}-selection-btn.cancel:hover {
+            background: #c82333;
+        }
     `;
     
     document.head.appendChild(style);
@@ -321,6 +395,10 @@ function handleMessage(request, sender, sendResponse) {
             });
             break;
             
+        case 'startAreaSelection':
+            startAreaSelection(sendResponse);
+            break;
+            
         default:
             sendResponse({success: false, error: '未知操作'});
     }
@@ -375,6 +453,237 @@ function takeScreenshotFromContent() {
 
 // 监听键盘快捷键（Ctrl+Shift+S 截图）
 document.addEventListener('keydown', (event) => {
+    // Ctrl+Shift+S 或 Cmd+Shift+S 截图
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'S') {
+        event.preventDefault();
+        takeScreenshotFromContent();
+    }
+});
+
+// 区域选择相关变量
+let isSelectingArea = false;
+let selectionOverlay = null;
+let selectionBox = null;
+let startPoint = { x: 0, y: 0 };
+let endPoint = { x: 0, y: 0 };
+let selectionCallback = null;
+
+// 开始区域选择
+function startAreaSelection(callback) {
+    if (isSelectingArea) {
+        callback({ success: false, error: '正在选择区域中' });
+        return;
+    }
+    
+    isSelectingArea = true;
+    selectionCallback = callback;
+    
+    // 创建覆盖层
+    createSelectionOverlay();
+    
+    // 显示提示信息
+    showSelectionInfo();
+    
+    callback({ success: true });
+}
+
+// 创建选择覆盖层
+function createSelectionOverlay() {
+    // 隐藏浮动工具栏
+    const toolbar = document.getElementById(`${PLUGIN_PREFIX}-toolbar`);
+    if (toolbar) {
+        toolbar.style.display = 'none';
+    }
+    
+    // 创建覆盖层
+    selectionOverlay = document.createElement('div');
+    selectionOverlay.className = `${PLUGIN_PREFIX}-selection-overlay`;
+    
+    // 创建选择框
+    selectionBox = document.createElement('div');
+    selectionBox.className = `${PLUGIN_PREFIX}-selection-box`;
+    selectionBox.style.display = 'none';
+    
+    selectionOverlay.appendChild(selectionBox);
+    document.body.appendChild(selectionOverlay);
+    
+    // 绑定事件
+    selectionOverlay.addEventListener('mousedown', handleMouseDown);
+    selectionOverlay.addEventListener('mousemove', handleMouseMove);
+    selectionOverlay.addEventListener('mouseup', handleMouseUp);
+    
+    // 禁止页面滚动
+    document.body.style.overflow = 'hidden';
+}
+
+// 显示选择提示信息
+function showSelectionInfo() {
+    const infoDiv = document.createElement('div');
+    infoDiv.className = `${PLUGIN_PREFIX}-selection-info`;
+    infoDiv.innerHTML = `
+        <div style="font-size: 18px; margin-bottom: 10px;">✂️ 区域截图</div>
+        <div>请拖拽鼠标选择要截图的区域</div>
+        <div style="font-size: 14px; margin-top: 10px; opacity: 0.8;">按 ESC 取消</div>
+    `;
+    
+    selectionOverlay.appendChild(infoDiv);
+    
+    // 3秒后隐藏提示
+    setTimeout(() => {
+        if (infoDiv.parentNode) {
+            infoDiv.remove();
+        }
+    }, 3000);
+}
+
+// 鼠标按下事件
+function handleMouseDown(event) {
+    if (event.button !== 0) return; // 只处理左键
+    
+    startPoint = {
+        x: event.clientX + window.scrollX,
+        y: event.clientY + window.scrollY
+    };
+    
+    selectionBox.style.left = startPoint.x + 'px';
+    selectionBox.style.top = startPoint.y + 'px';
+    selectionBox.style.width = '0px';
+    selectionBox.style.height = '0px';
+    selectionBox.style.display = 'block';
+    
+    event.preventDefault();
+}
+
+// 鼠标移动事件
+function handleMouseMove(event) {
+    if (selectionBox.style.display === 'none') return;
+    
+    endPoint = {
+        x: event.clientX + window.scrollX,
+        y: event.clientY + window.scrollY
+    };
+    
+    const left = Math.min(startPoint.x, endPoint.x);
+    const top = Math.min(startPoint.y, endPoint.y);
+    const width = Math.abs(endPoint.x - startPoint.x);
+    const height = Math.abs(endPoint.y - startPoint.y);
+    
+    selectionBox.style.left = left + 'px';
+    selectionBox.style.top = top + 'px';
+    selectionBox.style.width = width + 'px';
+    selectionBox.style.height = height + 'px';
+}
+
+// 鼠标释放事件
+function handleMouseUp(event) {
+    if (selectionBox.style.display === 'none') return;
+    
+    const left = Math.min(startPoint.x, endPoint.x);
+    const top = Math.min(startPoint.y, endPoint.y);
+    const width = Math.abs(endPoint.x - startPoint.x);
+    const height = Math.abs(endPoint.y - startPoint.y);
+    
+    // 检查选择区域是否足够大
+    if (width < 10 || height < 10) {
+        showNotification('选择区域太小，请重新选择');
+        selectionBox.style.display = 'none';
+        return;
+    }
+    
+    // 显示确认按钮
+    showSelectionControls(left, top, width, height);
+}
+
+// 显示选择控制按钮
+function showSelectionControls(left, top, width, height) {
+    const controlsDiv = document.createElement('div');
+    controlsDiv.className = `${PLUGIN_PREFIX}-selection-controls`;
+    controlsDiv.innerHTML = `
+        <div style="margin-bottom: 10px;">选择区域: ${width} × ${height} 像素</div>
+        <button class="${PLUGIN_PREFIX}-selection-btn" id="${PLUGIN_PREFIX}-confirm-selection">📸 截图</button>
+        <button class="${PLUGIN_PREFIX}-selection-btn cancel" id="${PLUGIN_PREFIX}-cancel-selection">取消</button>
+    `;
+    
+    selectionOverlay.appendChild(controlsDiv);
+    
+    // 绑定按钮事件
+    document.getElementById(`${PLUGIN_PREFIX}-confirm-selection`).addEventListener('click', () => {
+        confirmAreaSelection(left, top, width, height);
+    });
+    
+    document.getElementById(`${PLUGIN_PREFIX}-cancel-selection`).addEventListener('click', () => {
+        cancelAreaSelection();
+    });
+}
+
+// 确认区域选择
+function confirmAreaSelection(left, top, width, height) {
+    // 计算相对于视口的位置
+    const selection = {
+        x: left - window.scrollX,
+        y: top - window.scrollY,
+        width: width,
+        height: height,
+        devicePixelRatio: window.devicePixelRatio || 1
+    };
+    
+    // 发送区域截图请求给 background script
+    chrome.runtime.sendMessage({
+        action: 'takeAreaScreenshot',
+        selection: selection,
+        pageInfo: {
+            title: document.title,
+            url: window.location.href
+        }
+    }, (response) => {
+        if (response && response.success) {
+            showNotification('区域截图成功！');
+        } else {
+            const errorMsg = response ? response.error : '未知错误';
+            showNotification(`区域截图失败: ${errorMsg}`);
+        }
+        
+        // 清理选择界面
+        cleanupAreaSelection();
+    });
+}
+
+// 取消区域选择
+function cancelAreaSelection() {
+    showNotification('已取消区域选择');
+    cleanupAreaSelection();
+}
+
+// 清理区域选择界面
+function cleanupAreaSelection() {
+    isSelectingArea = false;
+    
+    // 移除覆盖层
+    if (selectionOverlay) {
+        selectionOverlay.remove();
+        selectionOverlay = null;
+        selectionBox = null;
+    }
+    
+    // 恢复页面滚动
+    document.body.style.overflow = '';
+    
+    // 显示浮动工具栏
+    const toolbar = document.getElementById(`${PLUGIN_PREFIX}-toolbar`);
+    if (toolbar) {
+        toolbar.style.display = 'block';
+    }
+    
+    selectionCallback = null;
+}
+
+// 监听 ESC 键取消选择
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && isSelectingArea) {
+        event.preventDefault();
+        cancelAreaSelection();
+    }
+    
     // Ctrl+Shift+S 或 Cmd+Shift+S 截图
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'S') {
         event.preventDefault();

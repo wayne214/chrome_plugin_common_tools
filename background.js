@@ -293,6 +293,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'takeScreenshot':
             handleTakeScreenshotRequest(sender, sendResponse);
             break;
+        case 'takeAreaScreenshot':
+            handleTakeAreaScreenshot(request, sender, sendResponse);
+            break;
         default:
             sendResponse({ success: false, error: '未知操作' });
     }
@@ -531,4 +534,189 @@ async function handleTakeScreenshotRequest(sender, sendResponse) {
         console.error('处理截图请求失败:', error);
         sendResponse({ success: false, error: error.message });
     }
+}
+
+// 处理区域截图功能
+async function handleTakeAreaScreenshot(request, sender, sendResponse) {
+    try {
+        if (!sender.tab) {
+            throw new Error('无法获取标签页信息');
+        }
+        
+        const { selection, pageInfo } = request;
+        
+        if (!selection || !selection.width || !selection.height) {
+            throw new Error('无效的选择区域');
+        }
+        
+        console.log('开始区域截图:', selection);
+        
+        // 首先截取整个可见区域
+        const fullDataUrl = await chrome.tabs.captureVisibleTab(sender.tab.windowId, {
+            format: 'png',
+            quality: 100
+        });
+        
+        if (!fullDataUrl) {
+            throw new Error('截图失败，无法获取图像数据');
+        }
+        
+        // 裁剪指定区域
+        const croppedDataUrl = await cropImage(fullDataUrl, selection);
+        
+        // 保存截图到存储中
+        const timestamp = new Date().toISOString();
+        const screenshotData = {
+            dataUrl: croppedDataUrl,
+            timestamp: timestamp,
+            pageTitle: pageInfo.title || sender.tab.title,
+            pageUrl: pageInfo.url || sender.tab.url,
+            tabId: sender.tab.id,
+            isAreaScreenshot: true,
+            selection: selection
+        };
+        
+        await chrome.storage.local.set({
+            [`screenshot_${timestamp}`]: screenshotData
+        });
+        
+        // 在页面中显示通知
+        await chrome.scripting.executeScript({
+            target: { tabId: sender.tab.id },
+            function: (title, width, height) => {
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #4caf50;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 6px;
+                    z-index: 10001;
+                    font-family: Arial, sans-serif;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                `;
+                notification.innerHTML = `
+                    <div style="font-weight: bold; margin-bottom: 4px;">✂️ 区域截图完成</div>
+                    <div style="font-size: 12px; opacity: 0.9;">${title}</div>
+                    <div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">${width} × ${height} 像素</div>
+                `;
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 4000);
+            },
+            args: [pageInfo.title || sender.tab.title, selection.width, selection.height]
+        });
+        
+        // 显示系统通知
+        showNotification(`区域截图完成: ${pageInfo.title || sender.tab.title} (${selection.width}×${selection.height})`);
+        
+        console.log('区域截图保存成功:', timestamp);
+        
+        // 清理旧的截图
+        await cleanupOldScreenshots();
+        
+        sendResponse({ success: true, timestamp: timestamp });
+        
+    } catch (error) {
+        console.error('区域截图失败:', error);
+        sendResponse({ success: false, error: error.message });
+        
+        // 在页面中显示错误通知
+        if (sender.tab) {
+            try {
+                await chrome.scripting.executeScript({
+                    target: { tabId: sender.tab.id },
+                    function: (errorMsg) => {
+                        const notification = document.createElement('div');
+                        notification.style.cssText = `
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            background: #f44336;
+                            color: white;
+                            padding: 12px 20px;
+                            border-radius: 6px;
+                            z-index: 10001;
+                            font-family: Arial, sans-serif;
+                            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                        `;
+                        notification.innerHTML = `
+                            <div style="font-weight: bold; margin-bottom: 4px;">❌ 区域截图失败</div>
+                            <div style="font-size: 12px; opacity: 0.9;">${errorMsg}</div>
+                        `;
+                        document.body.appendChild(notification);
+                        
+                        setTimeout(() => {
+                            if (notification.parentNode) {
+                                notification.remove();
+                            }
+                        }, 5000);
+                    },
+                    args: [error.message]
+                });
+            } catch (notificationError) {
+                console.error('显示错误通知失败:', notificationError);
+            }
+        }
+    }
+}
+
+// 裁剪图像功能
+async function cropImage(dataUrl, selection) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = new OffscreenCanvas(selection.width, selection.height);
+            const ctx = canvas.getContext('2d');
+            
+            // 考虑设备像素比率
+            const dpr = selection.devicePixelRatio || 1;
+            const sourceX = selection.x * dpr;
+            const sourceY = selection.y * dpr;
+            const sourceWidth = selection.width * dpr;
+            const sourceHeight = selection.height * dpr;
+            
+            // 确保裁剪区域不超出图像边界
+            const actualSourceX = Math.max(0, Math.min(sourceX, img.width));
+            const actualSourceY = Math.max(0, Math.min(sourceY, img.height));
+            const actualSourceWidth = Math.min(sourceWidth, img.width - actualSourceX);
+            const actualSourceHeight = Math.min(sourceHeight, img.height - actualSourceY);
+            
+            if (actualSourceWidth <= 0 || actualSourceHeight <= 0) {
+                reject(new Error('无效的裁剪区域'));
+                return;
+            }
+            
+            try {
+                // 裁剪图像
+                ctx.drawImage(
+                    img,
+                    actualSourceX, actualSourceY, actualSourceWidth, actualSourceHeight,
+                    0, 0, selection.width, selection.height
+                );
+                
+                // 转换为数据 URL
+                canvas.convertToBlob({ type: 'image/png', quality: 0.9 })
+                    .then(blob => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = () => reject(new Error('图像转换失败'));
+                        reader.readAsDataURL(blob);
+                    })
+                    .catch(reject);
+                    
+            } catch (error) {
+                reject(new Error('图像裁剪失败: ' + error.message));
+            }
+        };
+        
+        img.onerror = () => reject(new Error('图像加载失败'));
+        img.src = dataUrl;
+    });
 }

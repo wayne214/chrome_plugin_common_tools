@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('highlight-btn').addEventListener('click', highlightText);
     document.getElementById('count-words-btn').addEventListener('click', countWords);
     document.getElementById('extract-links-btn').addEventListener('click', extractLinks);
-    document.getElementById('screenshot-btn').addEventListener('click', takeScreenshot);
+    document.getElementById('screenshot-full-btn').addEventListener('click', takeScreenshot);
+    document.getElementById('screenshot-area-btn').addEventListener('click', takeAreaScreenshot);
 });
 
 // 获取当前活跃标签页
@@ -236,6 +237,43 @@ async function takeScreenshot() {
         // 如果是权限问题，给出具体提示
         if (error.message.includes('Cannot access') || error.message.includes('permission')) {
             document.getElementById('screenshot-status').textContent = '截图失败：需要在chrome://extensions/中重新加载插件';
+        }
+    }
+}
+
+// 区域截图功能
+async function takeAreaScreenshot() {
+    try {
+        // 显示状态
+        document.getElementById('screenshot-status').textContent = '请在页面中选择截图区域...';
+        document.getElementById('screenshot-result').style.display = 'block';
+        
+        // 获取当前活跃的标签页
+        const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+        
+        if (!tab) {
+            throw new Error('无法获取当前标签页');
+        }
+        
+        // 向 content script 发送消息，启动区域选择
+        const response = await chrome.tabs.sendMessage(tab.id, {
+            action: 'startAreaSelection'
+        });
+        
+        if (!response || !response.success) {
+            throw new Error('启动区域选择失败');
+        }
+        
+        // 关闭弹窗，让用户在页面中进行选择
+        window.close();
+        
+    } catch (error) {
+        console.error('区域截图失败:', error);
+        document.getElementById('screenshot-status').textContent = `区域截图失败: ${error.message}`;
+        
+        // 如果是 content script 未加载的问题
+        if (error.message.includes('不能建立连接') || error.message.includes('Could not establish connection')) {
+            document.getElementById('screenshot-status').textContent = '请先刷新页面，然后再试';
         }
     }
 }

@@ -137,6 +137,27 @@ body {
     box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3) !important;
 }
 
+/* 区域截图按钮样式 */
+.screenshot-area-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    margin-top: 5px;
+}
+
+.screenshot-area-btn:hover {
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
+}
+
+/* 截图功能区域 */
+.screenshot-section {
+    margin: 10px 0;
+}
+
+.screenshot-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
 /* 截图预览样式 */
 #screenshot-preview img {
     max-width: 100%;
