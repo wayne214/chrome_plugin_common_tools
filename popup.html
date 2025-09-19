@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>我的Chrome插件</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>我的Chrome插件</h1>
+            <p class="subtitle">功能强大的浏览器助手</p>
+        </div>
+        
+        <div class="content">
+            <div class="feature-section">
+                <h3>当前页面信息</h3>
+                <div class="info-item">
+                    <span class="label">标题:</span>
+                    <span id="page-title">加载中...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">URL:</span>
+                    <span id="page-url">加载中...</span>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <button id="highlight-btn" class="action-btn">高亮文本</button>
+                <button id="count-words-btn" class="action-btn">统计字数</button>
+                <button id="extract-links-btn" class="action-btn">提取链接</button>
+                <button id="screenshot-btn" class="action-btn screenshot-btn">📸 截图保存</button>
+            </div>
+            
+            <div class="results">
+                <div id="word-count" class="result-item" style="display: none;">
+                    <strong>字数统计:</strong> <span id="word-count-value">0</span>
+                </div>
+                <div id="link-count" class="result-item" style="display: none;">
+                    <strong>链接数量:</strong> <span id="link-count-value">0</span>
+                </div>
+                <div id="screenshot-result" class="result-item" style="display: none;">
+                    <strong>截图结果:</strong> <span id="screenshot-status">处理中...</span>
+                    <div id="screenshot-preview" style="margin-top: 10px; max-width: 100%; text-align: center;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Chrome插件演示 v1.0.0</p>
+        </div>
+    </div>
+    
+    <script src="popup.js"></script>
+</body>
+</html>
