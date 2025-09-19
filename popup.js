@@ -13,8 +13,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('highlight-btn').addEventListener('click', highlightText);
     document.getElementById('count-words-btn').addEventListener('click', countWords);
     document.getElementById('extract-links-btn').addEventListener('click', extractLinks);
-    document.getElementById('screenshot-full-btn').addEventListener('click', takeScreenshot);
-    document.getElementById('screenshot-area-btn').addEventListener('click', takeAreaScreenshot);
 });
 
 // 获取当前活跃标签页

@@ -137,15 +137,18 @@ function addPluginStyles() {
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.85);
             color: white;
-            padding: 20px;
-            border-radius: 8px;
+            padding: 24px;
+            border-radius: 12px;
             font-family: Arial, sans-serif;
             font-size: 16px;
             text-align: center;
             z-index: 1000000;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            max-width: 400px;
         }
         
         .${PLUGIN_PREFIX}-selection-controls {
@@ -163,27 +166,44 @@ function addPluginStyles() {
         }
         
         .${PLUGIN_PREFIX}-selection-btn {
-            margin: 0 10px;
-            padding: 8px 16px;
+            margin: 0 4px;
+            padding: 10px 16px;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             background: #007cff;
             color: white;
             cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s ease;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            min-width: 120px;
+            box-shadow: 0 2px 8px rgba(0, 124, 255, 0.3);
         }
         
         .${PLUGIN_PREFIX}-selection-btn:hover {
-            background: #0056b3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 124, 255, 0.4);
+        }
+        
+        .${PLUGIN_PREFIX}-selection-btn.primary {
+            background: linear-gradient(135deg, #007cff, #0056b3);
+            font-weight: 600;
+        }
+        
+        .${PLUGIN_PREFIX}-selection-btn.secondary {
+            background: linear-gradient(135deg, #28a745, #20c997);
+        }
+        
+        .${PLUGIN_PREFIX}-selection-btn.secondary:hover {
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
         }
         
         .${PLUGIN_PREFIX}-selection-btn.cancel {
-            background: #dc3545;
+            background: linear-gradient(135deg, #dc3545, #c82333);
         }
         
         .${PLUGIN_PREFIX}-selection-btn.cancel:hover {
-            background: #c82333;
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
         }
     `;
     
@@ -206,7 +226,6 @@ function createFloatingToolbar() {
         <button class="${PLUGIN_PREFIX}-toolbar-btn" id="${PLUGIN_PREFIX}-highlight-all">高亮所有文本</button>
         <button class="${PLUGIN_PREFIX}-toolbar-btn" id="${PLUGIN_PREFIX}-clear-highlight">清除高亮</button>
         <button class="${PLUGIN_PREFIX}-toolbar-btn" id="${PLUGIN_PREFIX}-scroll-to-top">回到顶部</button>
-        <button class="${PLUGIN_PREFIX}-toolbar-btn" id="${PLUGIN_PREFIX}-take-screenshot">📸 截图</button>
         <button class="${PLUGIN_PREFIX}-toolbar-btn" id="${PLUGIN_PREFIX}-hide-toolbar">隐藏工具栏</button>
     `;
     
@@ -221,7 +240,6 @@ function bindToolbarEvents() {
     const highlightBtn = document.getElementById(`${PLUGIN_PREFIX}-highlight-all`);
     const clearBtn = document.getElementById(`${PLUGIN_PREFIX}-clear-highlight`);
     const scrollBtn = document.getElementById(`${PLUGIN_PREFIX}-scroll-to-top`);
-    const screenshotBtn = document.getElementById(`${PLUGIN_PREFIX}-take-screenshot`);
     const hideBtn = document.getElementById(`${PLUGIN_PREFIX}-hide-toolbar`);
     
     if (highlightBtn) {
@@ -234,10 +252,6 @@ function bindToolbarEvents() {
     
     if (scrollBtn) {
         scrollBtn.addEventListener('click', scrollToTop);
-    }
-    
-    if (screenshotBtn) {
-        screenshotBtn.addEventListener('click', takeScreenshotFromContent);
     }
     
     if (hideBtn) {
@@ -395,10 +409,6 @@ function handleMessage(request, sender, sendResponse) {
             });
             break;
             
-        case 'startAreaSelection':
-            startAreaSelection(sendResponse);
-            break;
-            
         default:
             sendResponse({success: false, error: '未知操作'});
     }
@@ -434,20 +444,39 @@ function takeScreenshotFromContent() {
     // 显示加载状态
     showNotification('正在截图...');
     
-    // 发送消息给 background script 请求截图
+    // 先测试消息传递是否正常
     chrome.runtime.sendMessage({
-        action: 'takeScreenshot',
-        pageInfo: {
-            title: document.title,
-            url: window.location.href
+        action: 'test'
+    }, (testResponse) => {
+        console.log('测试消息响应:', testResponse);
+        
+        if (chrome.runtime.lastError) {
+            console.error('测试消息失败:', chrome.runtime.lastError);
+            showNotification('❌ 插件通信失败，请重新加载插件');
+            return;
         }
-    }, (response) => {
-        if (response && response.success) {
-            showNotification('截图成功！请查看插件弹窗获取详情');
-        } else {
-            const errorMsg = response ? response.error : '未知错误';
-            showNotification(`截图失败: ${errorMsg}`);
+        
+        if (!testResponse || !testResponse.success) {
+            console.error('后台脚本响应异常:', testResponse);
+            showNotification('❌ 后台脚本异常，请检查插件状态');
+            return;
         }
+        
+        // 测试通过，发送实际截图请求
+        chrome.runtime.sendMessage({
+            action: 'takeScreenshot',
+            pageInfo: {
+                title: document.title,
+                url: window.location.href
+            }
+        }, (response) => {
+            if (response && response.success) {
+                showNotification('截图成功！请查看插件弹窗获取详情');
+            } else {
+                const errorMsg = response ? response.error : '未知错误';
+                showNotification(`截图失败: ${errorMsg}`);
+            }
+        });
     });
 }
 
@@ -521,19 +550,25 @@ function showSelectionInfo() {
     const infoDiv = document.createElement('div');
     infoDiv.className = `${PLUGIN_PREFIX}-selection-info`;
     infoDiv.innerHTML = `
-        <div style="font-size: 18px; margin-bottom: 10px;">✂️ 区域截图</div>
-        <div>请拖拽鼠标选择要截图的区域</div>
-        <div style="font-size: 14px; margin-top: 10px; opacity: 0.8;">按 ESC 取消</div>
+        <div style="font-size: 20px; margin-bottom: 12px;">✂️ 区域截图选择</div>
+        <div style="margin-bottom: 8px;">拖拽鼠标选择要截图的区域</div>
+        <div style="margin-bottom: 8px;">或者单击位置创建默认区域</div>
+        <div style="font-size: 14px; opacity: 0.8; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 8px; margin-top: 8px;">
+            <div>• 按 <kbd style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px;">ESC</kbd> 取消</div>
+            <div>• 支持重新选择区域</div>
+        </div>
     `;
     
     selectionOverlay.appendChild(infoDiv);
     
-    // 3秒后隐藏提示
+    // 4秒后隐藏提示
     setTimeout(() => {
         if (infoDiv.parentNode) {
-            infoDiv.remove();
+            infoDiv.style.opacity = '0';
+            infoDiv.style.transform = 'translate(-50%, -50%) scale(0.9)';
+            setTimeout(() => infoDiv.remove(), 300);
         }
-    }, 3000);
+    }, 4000);
 }
 
 // 鼠标按下事件
@@ -545,18 +580,22 @@ function handleMouseDown(event) {
         y: event.clientY + window.scrollY
     };
     
+    // 初始化选择框
     selectionBox.style.left = startPoint.x + 'px';
     selectionBox.style.top = startPoint.y + 'px';
     selectionBox.style.width = '0px';
     selectionBox.style.height = '0px';
     selectionBox.style.display = 'block';
     
+    // 记录是否正在拖拽
+    selectionBox.dataset.dragging = 'true';
+    
     event.preventDefault();
 }
 
 // 鼠标移动事件
 function handleMouseMove(event) {
-    if (selectionBox.style.display === 'none') return;
+    if (selectionBox.style.display === 'none' || selectionBox.dataset.dragging !== 'true') return;
     
     endPoint = {
         x: event.clientX + window.scrollX,
@@ -572,52 +611,149 @@ function handleMouseMove(event) {
     selectionBox.style.top = top + 'px';
     selectionBox.style.width = width + 'px';
     selectionBox.style.height = height + 'px';
+    
+    // 更新选择框的显示样式，显示尺寸信息
+    const sizeInfo = selectionBox.querySelector('.size-info');
+    if (!sizeInfo && width > 0 && height > 0) {
+        const info = document.createElement('div');
+        info.className = 'size-info';
+        info.style.cssText = `
+            position: absolute;
+            top: -30px;
+            left: 0;
+            background: rgba(0, 124, 255, 0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: Arial, sans-serif;
+            white-space: nowrap;
+            pointer-events: none;
+        `;
+        selectionBox.appendChild(info);
+    }
+    
+    if (sizeInfo) {
+        sizeInfo.textContent = `${Math.round(width)} × ${Math.round(height)}`;
+    }
 }
 
 // 鼠标释放事件
 function handleMouseUp(event) {
     if (selectionBox.style.display === 'none') return;
     
-    const left = Math.min(startPoint.x, endPoint.x);
-    const top = Math.min(startPoint.y, endPoint.y);
-    const width = Math.abs(endPoint.x - startPoint.x);
-    const height = Math.abs(endPoint.y - startPoint.y);
+    // 停止拖拽状态
+    selectionBox.dataset.dragging = 'false';
     
-    // 检查选择区域是否足够大
-    if (width < 10 || height < 10) {
-        showNotification('选择区域太小，请重新选择');
+    const left = Math.min(startPoint.x, endPoint.x || startPoint.x);
+    const top = Math.min(startPoint.y, endPoint.y || startPoint.y);
+    const width = Math.abs((endPoint?.x || startPoint.x) - startPoint.x);
+    const height = Math.abs((endPoint?.y || startPoint.y) - startPoint.y);
+    
+    // 如果没有拖拽（只是点击），创建一个默认区域
+    if (width < 3 && height < 3) {
+        const defaultSize = 200; // 默认200x200像素
+        const newLeft = startPoint.x - defaultSize / 2;
+        const newTop = startPoint.y - defaultSize / 2;
+        
+        // 确保默认区域不超出视口边界
+        const finalLeft = Math.max(0, Math.min(newLeft, window.innerWidth - defaultSize));
+        const finalTop = Math.max(0, Math.min(newTop, window.innerHeight - defaultSize));
+        
+        selectionBox.style.left = (finalLeft + window.scrollX) + 'px';
+        selectionBox.style.top = (finalTop + window.scrollY) + 'px';
+        selectionBox.style.width = defaultSize + 'px';
+        selectionBox.style.height = defaultSize + 'px';
+        
+        showSelectionControls(finalLeft + window.scrollX, finalTop + window.scrollY, defaultSize, defaultSize);
+        showNotification(`已创建默认区域 ${defaultSize}x${defaultSize}，您可以直接截图或重新选择`);
+        return;
+    }
+    
+    // 检查选择区域是否足够大（降低最小尺寸要求）
+    if (width < 3 || height < 3) {
+        showNotification('请选择一个区域进行截图，最小3x3像素');
         selectionBox.style.display = 'none';
         return;
     }
     
     // 显示确认按钮
     showSelectionControls(left, top, width, height);
+    showNotification(`选择区域: ${Math.round(width)} × ${Math.round(height)} 像素`);
 }
 
 // 显示选择控制按钮
 function showSelectionControls(left, top, width, height) {
+    // 移除已存在的控制按钮
+    const existingControls = selectionOverlay.querySelector(`.${PLUGIN_PREFIX}-selection-controls`);
+    if (existingControls) {
+        existingControls.remove();
+    }
+    
     const controlsDiv = document.createElement('div');
     controlsDiv.className = `${PLUGIN_PREFIX}-selection-controls`;
     controlsDiv.innerHTML = `
-        <div style="margin-bottom: 10px;">选择区域: ${width} × ${height} 像素</div>
-        <button class="${PLUGIN_PREFIX}-selection-btn" id="${PLUGIN_PREFIX}-confirm-selection">📸 截图</button>
-        <button class="${PLUGIN_PREFIX}-selection-btn cancel" id="${PLUGIN_PREFIX}-cancel-selection">取消</button>
+        <div style="margin-bottom: 15px; text-align: center;">
+            <strong>选择区域:</strong> ${Math.round(width)} × ${Math.round(height)} 像素<br>
+            <span style="font-size: 12px; opacity: 0.8;">可以重新拖拽选择或使用下方工具</span>
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+            <button class="${PLUGIN_PREFIX}-selection-btn primary" data-action="save">
+                📸 截图并保存
+            </button>
+            <button class="${PLUGIN_PREFIX}-selection-btn secondary" data-action="download">
+                💾 直接下载
+            </button>
+            <button class="${PLUGIN_PREFIX}-selection-btn secondary" data-action="copy">
+                📋 复制到剪贴板
+            </button>
+            <button class="${PLUGIN_PREFIX}-selection-btn cancel" data-action="cancel">
+                ❌ 取消
+            </button>
+        </div>
     `;
     
     selectionOverlay.appendChild(controlsDiv);
     
-    // 绑定按钮事件
-    document.getElementById(`${PLUGIN_PREFIX}-confirm-selection`).addEventListener('click', () => {
-        confirmAreaSelection(left, top, width, height);
-    });
-    
-    document.getElementById(`${PLUGIN_PREFIX}-cancel-selection`).addEventListener('click', () => {
-        cancelAreaSelection();
+    // 使用事件委托绑定所有按钮事件
+    controlsDiv.addEventListener('click', (event) => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        
+        const action = button.getAttribute('data-action');
+        console.log('工具栏按钮被点击，操作:', action);
+        
+        // 防止重复点击
+        if (button.disabled) return;
+        button.disabled = true;
+        
+        // 显示按钮状态
+        const originalText = button.innerHTML;
+        button.innerHTML = action === 'cancel' ? '⏳ 取消中...' : '⏳ 处理中...';
+        
+        // 延迟执行以显示状态变化
+        setTimeout(() => {
+            try {
+                if (action === 'cancel') {
+                    cancelAreaSelection();
+                } else {
+                    confirmAreaSelection(left, top, width, height, action);
+                }
+            } catch (error) {
+                console.error('处理按钮点击失败:', error);
+                // 恢复按钮状态
+                button.disabled = false;
+                button.innerHTML = originalText;
+                showNotification('操作失败，请重试');
+            }
+        }, 100);
     });
 }
 
 // 确认区域选择
-function confirmAreaSelection(left, top, width, height) {
+function confirmAreaSelection(left, top, width, height, action = 'save') {
+    console.log('开始确认区域选择，操作:', action, '区域:', { left, top, width, height });
+    
     // 计算相对于视口的位置
     const selection = {
         x: left - window.scrollX,
@@ -627,24 +763,159 @@ function confirmAreaSelection(left, top, width, height) {
         devicePixelRatio: window.devicePixelRatio || 1
     };
     
+    console.log('计算的选择区域:', selection);
+    
+    // 显示加载状态
+    const actionText = {
+        'save': '保存截图',
+        'download': '下载截图',
+        'copy': '复制截图'
+    };
+    
+    showNotification(`正在${actionText[action] || '处理截图'}...`);
+    
+    // 先测试消息传递是否正常
+    chrome.runtime.sendMessage({
+        action: 'test'
+    }, (testResponse) => {
+        console.log('测试消息响应:', testResponse);
+        
+        if (chrome.runtime.lastError) {
+            console.error('测试消息失败:', chrome.runtime.lastError);
+            showNotification('❌ 插件通信失败，请重新加载插件');
+            return;
+        }
+        
+        if (!testResponse || !testResponse.success) {
+            console.error('后台脚本响应异常:', testResponse);
+            showNotification('❌ 后台脚本异常，请检查插件状态');
+            return;
+        }
+        
+        // 测试通过，发送实际区域截图请求
+        sendAreaScreenshotRequest(selection, action);
+    });
+}
+
+// 发送区域截图请求
+function sendAreaScreenshotRequest(selection, action) {
     // 发送区域截图请求给 background script
+    console.log('发送消息给后台脚本:', {
+        action: 'takeAreaScreenshot',
+        selection: selection,
+        actionType: action,
+        pageInfo: {
+            title: document.title,
+            url: window.location.href
+        }
+    });
+    
     chrome.runtime.sendMessage({
         action: 'takeAreaScreenshot',
         selection: selection,
+        actionType: action, // 'save', 'download', 'copy'
         pageInfo: {
             title: document.title,
             url: window.location.href
         }
     }, (response) => {
-        if (response && response.success) {
-            showNotification('区域截图成功！');
-        } else {
-            const errorMsg = response ? response.error : '未知错误';
-            showNotification(`区域截图失败: ${errorMsg}`);
+        console.log('收到后台响应:', response);
+        console.log('chrome.runtime.lastError:', chrome.runtime.lastError);
+        
+        // 检查是否有运行时错误
+        if (chrome.runtime.lastError) {
+            console.error('Chrome runtime 错误:', chrome.runtime.lastError);
+            showNotification(`❌ 消息传递失败: ${chrome.runtime.lastError.message}`);
+            return;
         }
         
-        // 清理选择界面
-        cleanupAreaSelection();
+        // 检查是否接收到响应
+        if (!response) {
+            console.error('未接收到后台响应');
+            showNotification('❌ 后台脚本无响应，请检查插件状态');
+            return;
+        }
+        
+        if (response.success) {
+            console.log(`${action} 操作成功`);
+            switch (action) {
+                case 'save':
+                    showNotification('✅ 区域截图已保存！请在插件弹窗中查看');
+                    break;
+                case 'download':
+                    showNotification('✅ 截图已开始下载！');
+                    break;
+                case 'copy':
+                    showNotification('✅ 截图已复制到剪贴板！');
+                    break;
+            }
+            
+            // 成功后稍延迟清理界面，让用户看到成功消息
+            setTimeout(() => {
+                cleanupAreaSelection();
+            }, 2000);
+            
+        } else {
+            const errorMsg = response.error || '未知错误';
+            console.error(`区域截图${action}失败:`, errorMsg);
+            showNotification(`❌ 操作失败: ${errorMsg}`);
+            
+            // 失败时不清理界面，让用户可以重试
+        }
+    });
+    
+    chrome.runtime.sendMessage({
+        action: 'takeAreaScreenshot',
+        selection: selection,
+        actionType: action, // 'save', 'download', 'copy'
+        pageInfo: {
+            title: document.title,
+            url: window.location.href
+        }
+    }, (response) => {
+        console.log('收到后台响应:', response);
+        console.log('chrome.runtime.lastError:', chrome.runtime.lastError);
+        
+        // 检查是否有运行时错误
+        if (chrome.runtime.lastError) {
+            console.error('Chrome runtime 错误:', chrome.runtime.lastError);
+            showNotification(`❌ 消息传递失败: ${chrome.runtime.lastError.message}`);
+            return;
+        }
+        
+        // 检查是否接收到响应
+        if (!response) {
+            console.error('未接收到后台响应');
+            showNotification('❌ 后台脚本无响应，请检查插件状态');
+            return;
+        }
+        
+        if (response.success) {
+            console.log(`${action} 操作成功`);
+            switch (action) {
+                case 'save':
+                    showNotification('✅ 区域截图已保存！请在插件弹窗中查看');
+                    break;
+                case 'download':
+                    showNotification('✅ 截图已开始下载！');
+                    break;
+                case 'copy':
+                    showNotification('✅ 截图已复制到剪贴板！');
+                    break;
+            }
+            
+            // 成功后稍延迟清理界面，让用户看到成功消息
+            setTimeout(() => {
+                cleanupAreaSelection();
+            }, 2000);
+            
+        } else {
+            const errorMsg = response.error || '未知错误';
+            console.error(`区域截图${action}失败:`, errorMsg);
+            showNotification(`❌ 操作失败: ${errorMsg}`);
+            
+            // 失败时不清理界面，让用户可以重试
+        }
     });
 }
 
@@ -678,36 +949,10 @@ function cleanupAreaSelection() {
 }
 
 // 监听 ESC 键取消选择
-document.addEventListener('keydown', (event) => {
+document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape' && isSelectingArea) {
         event.preventDefault();
         cancelAreaSelection();
     }
-    
-    // Ctrl+Shift+S 或 Cmd+Shift+S 截图
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'S') {
-        event.preventDefault();
-        takeScreenshotFromContent();
-    }
 });
 
-// 添加双击截图功能（双击右上角）
-let doubleClickTimer = null;
-document.addEventListener('dblclick', (event) => {
-    // 检查是否在右上角区域（窗口的右上 20% 区域）
-    const rightTopArea = {
-        x: window.innerWidth * 0.8,
-        y: 0,
-        width: window.innerWidth * 0.2,
-        height: window.innerHeight * 0.2
-    };
-    
-    if (event.clientX >= rightTopArea.x && 
-        event.clientY >= rightTopArea.y && 
-        event.clientX <= rightTopArea.x + rightTopArea.width && 
-        event.clientY <= rightTopArea.y + rightTopArea.height) {
-        
-        event.preventDefault();
-        takeScreenshotFromContent();
-    }
-});
